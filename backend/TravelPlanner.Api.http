@@ -1,0 +1,17 @@
+@baseUrl = http://localhost:5274
+
+GET {{baseUrl}}/api/health
+
+###
+# Use future travel dates if running this example after December 2027.
+POST {{baseUrl}}/api/trips/preview
+Content-Type: application/json
+
+{
+  "origin": "Delhi",
+  "destination": "Goa",
+  "departureDate": "2027-12-10",
+  "returnDate": "2027-12-13",
+  "travelers": 2,
+  "budget": 25000
+}

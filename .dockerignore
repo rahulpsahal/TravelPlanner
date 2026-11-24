@@ -1,0 +1,10 @@
+**/bin
+**/obj
+**/node_modules
+**/dist
+**/.angular
+.dotnet-home
+.npm-cache
+.git
+**/.env
+**/.env.*

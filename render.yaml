@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: travel-planner
+    runtime: docker
+    plan: free
+    healthCheckPath: /api/health
+    envVars:
+      - key: GROQ_API_KEY
+        sync: false
+      - key: TAVILY_API_KEY
+        sync: false
+      - key: AVIATIONSTACK_API_KEY
+        sync: false
+      - key: RAILWAY_API_KEY
+        sync: false
