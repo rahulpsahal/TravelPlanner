@@ -1,4 +1,6 @@
 @baseUrl = http://localhost:5274
+@challengeId = 00000000-0000-0000-0000-000000000000
+@developmentCode = replace-with-code
 
 GET {{baseUrl}}/api/health
 
@@ -14,4 +16,22 @@ Content-Type: application/json
   "returnDate": "2027-12-13",
   "travelers": 2,
   "budget": 25000
+}
+
+###
+POST {{baseUrl}}/api/auth/otp/request
+Content-Type: application/json
+
+{
+  "phoneNumber": "+919876543210"
+}
+
+###
+# Set challengeId and developmentCode above from the request response.
+POST {{baseUrl}}/api/auth/otp/verify
+Content-Type: application/json
+
+{
+  "challengeId": "{{challengeId}}",
+  "code": "{{developmentCode}}"
 }
