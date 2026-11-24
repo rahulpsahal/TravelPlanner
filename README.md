@@ -10,6 +10,7 @@ Travel Planner helps travelers compare transport and lodging against a shared bu
 4. Added Swagger UI for interactive testing and an HTTP request file for repeatable tests.
 5. Prepared a Dockerfile and Render Blueprint for public deployment. A live deployment has yet to be verified.
 6. Added development-only OTP request and verification endpoints for Indian mobile numbers.
+7. Added EF Core with SQL Server LocalDB for authentication data. OTP challenges and verification attempts are saved to SQL Server.
 
 ## Project structure
 
@@ -18,13 +19,23 @@ Travel Planner helps travelers compare transport and lodging against a shared bu
 | [frontend/](frontend/) | Angular app and development proxy |
 | [backend/Program.cs](backend/Program.cs) | API routes, Swagger, and static file hosting |
 | [backend/Trips/TripPreview.cs](backend/Trips/TripPreview.cs) | Trip validation, sample offers, and budget calculations |
+| [backend/Data/](backend/Data/) | EF Core context, authentication models, and SQL Server migrations |
 | [backend/TravelPlanner.Api.http](backend/TravelPlanner.Api.http) | Example HTTP requests |
 | [Dockerfile](Dockerfile) | Packages Angular and ASP.NET Core as one web service |
 | [render.yaml](render.yaml) | Render Free service, health check, and secret placeholders |
 
 ## 1. Start the backend
 
-Use .NET SDK 10 and Node.js 24 with npm. From the repository root, run:
+Use .NET SDK 10 and Node.js 24 with npm. On Windows, the Development configuration uses the `TravelPlanner` database on `(localdb)\MSSQLLocalDB` with Windows authentication.
+
+From the repository root, install the EF Core CLI once and apply pending migrations:
+
+```powershell
+dotnet tool install --global dotnet-ef --version 10.0.14
+dotnet ef database update --project backend -- --environment Development
+```
+
+The initial migration creates `Users` and `OtpChallenges`. EF Core records applied migrations in `__EFMigrationsHistory`. Then start the backend:
 
 ```powershell
 cd backend
@@ -63,7 +74,7 @@ Start the backend with `dotnet run` and open [Swagger UI](http://localhost:5274/
 2. Call **POST /api/auth/otp/verify** with those values as `challengeId` and `code`. Send the code as a string to preserve any leading zeros.
 3. Expect HTTP 200 and `{"status":"signup_required"}`. Successful verification consumes the code.
 
-Codes expire after five minutes and allow five failed attempts. Wait 30 seconds before requesting another code for the same number. A new code replaces the previous one. Challenges are held in memory and reset on restart. These routes are available only in Development. SMS delivery, account lookup, signup, and login sessions are pending.
+Codes expire after five minutes and allow five failed attempts. Wait 30 seconds before requesting another code for the same number. A new code replaces the previous one. SQL Server stores a keyed hash of the code. Restarting the backend invalidates outstanding codes because the development signing key is regenerated. OTP logs record outcomes and attempt counts without logging phone numbers or codes. These routes are available only in Development. SMS delivery, account lookup, signup, and login sessions are pending.
 
 ## 4. Start the Angular preview
 
@@ -96,9 +107,9 @@ Enter actual values in Render when setting up the service or under **Environment
 
 ## Next milestones
 
-1. Add a verified signup session, PostgreSQL user accounts, sign-in sessions, and protected dashboard access.
+1. Add a verified signup session, SQL Server user registration, sign-in sessions, and protected dashboard access.
 2. Connect the Angular trip form to the preview API and display budget results and validation errors.
-3. Add PostgreSQL on Neon for saved trips and reopening plans.
+3. Choose hosted SQL Server for deployment and add tables for saving and reopening trips.
 4. Test provider coverage before adding live prices, train and bus options, and AI-assisted itineraries.
 
 Update this README in the same commit whenever a change affects setup, API requests or responses, environment variables, deployment, or milestone status.

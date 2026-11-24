@@ -1,18 +1,23 @@
 using System.Globalization;
 using System.Security.Cryptography;
+using System.Text;
 using System.Text.RegularExpressions;
-using Microsoft.Extensions.Caching.Memory;
+using Microsoft.EntityFrameworkCore;
+using TravelPlanner.Api.Data;
 
 namespace TravelPlanner.Api.Auth;
 
-internal sealed partial class DevelopmentOtp(IMemoryCache cache)
+internal sealed partial class DevelopmentOtp(
+    IDbContextFactory<TravelPlannerDbContext> databaseFactory,
+    ILogger<DevelopmentOtp> logger)
 {
     private static readonly TimeSpan CodeLifetime = TimeSpan.FromMinutes(5);
     private static readonly TimeSpan ResendDelay = TimeSpan.FromSeconds(30);
     private const int MaxAttempts = 5;
-    private readonly object gate = new();
+    private readonly SemaphoreSlim gate = new(1);
+    private readonly byte[] codeKey = RandomNumberGenerator.GetBytes(32);
 
-    public IResult Request(OtpRequest request)
+    public async Task<IResult> RequestAsync(OtpRequest request, CancellationToken cancellationToken)
     {
         var match = IndianMobileNumber().Match(request.PhoneNumber?.Trim() ?? "");
         if (!match.Success)
@@ -22,49 +27,88 @@ internal sealed partial class DevelopmentOtp(IMemoryCache cache)
             });
 
         var phone = "+91" + match.Groups[1].Value;
-        lock (gate)
+        await gate.WaitAsync(cancellationToken);
+        try
         {
-            if (cache.TryGetValue((phone, "cooldown"), out _))
+            await using var database = await databaseFactory.CreateDbContextAsync(cancellationToken);
+            var challenge = await database.OtpChallenges.FindAsync([phone], cancellationToken);
+            var now = DateTimeOffset.UtcNow;
+            if (challenge is not null && challenge.ResendAvailableAt > now)
             {
+                logger.LogInformation("OTP request throttled by resend cooldown");
                 return Results.Problem(
                     detail: "Wait 30 seconds between code requests for this number.",
                     statusCode: StatusCodes.Status429TooManyRequests);
             }
 
-            if (cache.TryGetValue<Guid>((phone, "challenge"), out var previousId))
-                cache.Remove(previousId);
+            if (challenge is null)
+            {
+                challenge = new OtpChallenge { PhoneNumber = phone };
+                database.OtpChallenges.Add(challenge);
+            }
 
-            var challengeId = Guid.NewGuid();
             var code = RandomNumberGenerator.GetInt32(1_000_000).ToString("D6", CultureInfo.InvariantCulture);
-            cache.Set(challengeId, new PendingChallenge(phone, code), CodeLifetime);
-            cache.Set((phone, "challenge"), challengeId, CodeLifetime);
-            cache.Set((phone, "cooldown"), true, ResendDelay);
+            challenge.Id = Guid.NewGuid();
+            challenge.CodeHash = HashCode(challenge.Id, code);
+            challenge.ExpiresAt = now + CodeLifetime;
+            challenge.ResendAvailableAt = now + ResendDelay;
+            challenge.FailedAttempts = 0;
+            await database.SaveChangesAsync(cancellationToken);
 
-            return Results.Ok(new OtpChallengeResponse(challengeId, (int)CodeLifetime.TotalSeconds, code));
+            logger.LogInformation("Development OTP challenge issued");
+            return Results.Ok(new OtpChallengeResponse(challenge.Id, (int)CodeLifetime.TotalSeconds, code));
+        }
+        finally
+        {
+            gate.Release();
         }
     }
 
-    public IResult Verify(OtpVerification request)
+    public async Task<IResult> VerifyAsync(OtpVerification request, CancellationToken cancellationToken)
     {
-        lock (gate)
+        await gate.WaitAsync(cancellationToken);
+        try
         {
-            if (!cache.TryGetValue<PendingChallenge>(request.ChallengeId, out var challenge)
-                || challenge is null)
-                return InvalidCode();
+            await using var database = await databaseFactory.CreateDbContextAsync(cancellationToken);
+            var challenge = await database.OtpChallenges.SingleOrDefaultAsync(
+                item => item.Id == request.ChallengeId, cancellationToken);
 
-            if (!string.Equals(request.Code, challenge.Code, StringComparison.Ordinal))
+            if (challenge?.CodeHash is null || challenge.ExpiresAt <= DateTimeOffset.UtcNow)
             {
-                challenge.FailedAttempts++;
-                if (challenge.FailedAttempts >= MaxAttempts)
-                    cache.Remove(request.ChallengeId);
+                logger.LogInformation("OTP verification rejected for an unavailable challenge");
                 return InvalidCode();
             }
 
-            cache.Remove(request.ChallengeId);
-            cache.Remove((challenge.Phone, "challenge"));
+            if (request.Code is not { Length: 6 } ||
+                !CryptographicOperations.FixedTimeEquals(challenge.CodeHash, HashCode(challenge.Id, request.Code)))
+            {
+                challenge.FailedAttempts++;
+                if (challenge.FailedAttempts >= MaxAttempts)
+                    challenge.CodeHash = null;
+
+                await database.SaveChangesAsync(cancellationToken);
+                logger.LogInformation("OTP verification rejected. Failed attempts: {FailedAttempts}", challenge.FailedAttempts);
+                return InvalidCode();
+            }
+
+            challenge.CodeHash = null;
+            await database.SaveChangesAsync(cancellationToken);
+            logger.LogInformation("Development OTP verification succeeded");
             return Results.Ok(new OtpVerificationResponse("signup_required"));
         }
+        catch (DbUpdateConcurrencyException)
+        {
+            logger.LogInformation("OTP verification rejected because the challenge changed");
+            return InvalidCode();
+        }
+        finally
+        {
+            gate.Release();
+        }
     }
+
+    private byte[] HashCode(Guid id, string code) =>
+        HMACSHA256.HashData(codeKey, Encoding.UTF8.GetBytes($"{id:N}:{code}"));
 
     private static IResult InvalidCode() => Results.ValidationProblem(new Dictionary<string, string[]>
     {
@@ -73,11 +117,6 @@ internal sealed partial class DevelopmentOtp(IMemoryCache cache)
 
     [GeneratedRegex(@"^(?:\+91\s*)?([6-9][0-9]{9})$")]
     private static partial Regex IndianMobileNumber();
-
-    private sealed record PendingChallenge(string Phone, string Code)
-    {
-        public int FailedAttempts { get; set; }
-    }
 }
 
 internal sealed record OtpRequest(string? PhoneNumber);

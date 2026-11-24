@@ -1,5 +1,7 @@
 using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.EntityFrameworkCore;
 using TravelPlanner.Api.Auth;
+using TravelPlanner.Api.Data;
 using TravelPlanner.Api.Trips;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -7,7 +9,8 @@ builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 if (builder.Environment.IsDevelopment())
 {
-    builder.Services.AddMemoryCache();
+    builder.Services.AddDbContextFactory<TravelPlannerDbContext>(options =>
+        options.UseSqlServer(builder.Configuration.GetConnectionString("TravelPlanner")));
     builder.Services.AddSingleton<DevelopmentOtp>();
     builder.Services.AddRateLimiter(options =>
     {
@@ -32,11 +35,13 @@ if (app.Environment.IsDevelopment())
     var auth = app.MapGroup("/api/auth/otp")
         .WithTags("Development OTP")
         .RequireRateLimiting("development-otp");
-    auth.MapPost("/request", (OtpRequest request, DevelopmentOtp otp) => otp.Request(request))
+    auth.MapPost("/request", (OtpRequest request, DevelopmentOtp otp, CancellationToken cancellationToken) =>
+        otp.RequestAsync(request, cancellationToken))
         .Produces<OtpChallengeResponse>()
         .ProducesValidationProblem()
         .Produces(StatusCodes.Status429TooManyRequests);
-    auth.MapPost("/verify", (OtpVerification request, DevelopmentOtp otp) => otp.Verify(request))
+    auth.MapPost("/verify", (OtpVerification request, DevelopmentOtp otp, CancellationToken cancellationToken) =>
+        otp.VerifyAsync(request, cancellationToken))
         .Produces<OtpVerificationResponse>()
         .ProducesValidationProblem()
         .Produces(StatusCodes.Status429TooManyRequests);
