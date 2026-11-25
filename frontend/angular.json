@@ -12,6 +12,7 @@
             "browser": "src/main.ts",
             "index": "src/index.html",
             "tsConfig": "tsconfig.json",
+            "styles": ["src/styles.css"],
             "outputPath": "dist/travel-planner"
           }
         },
@@ -23,5 +24,8 @@
         }
       }
     }
+  },
+  "cli": {
+    "analytics": false
   }
 }

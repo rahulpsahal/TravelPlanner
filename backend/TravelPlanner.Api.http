@@ -38,6 +38,21 @@ Content-Type: application/json
 }
 
 ###
+# Run with the signup cookie from OTP verification.
+POST {{baseUrl}}/api/auth/signup
+Content-Type: application/json
+
+{
+  "displayName": "Sample Traveler"
+}
+
+###
+GET {{baseUrl}}/api/auth/me
+
+###
+POST {{baseUrl}}/api/auth/logout
+
+###
 GET {{baseUrl}}/api/travel/hotels?destination=Goa
 
 ###

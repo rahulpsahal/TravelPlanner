@@ -98,6 +98,21 @@ public sealed partial class TravelController(TravelProviderService provider) : C
         return await provider.ItineraryAsync(new ItineraryRequest(destination, request.Days, interests), token);
     }
 
+    [HttpPost("copilot", Name = ApiLogNames.CopilotReqResp)]
+    [EndpointSummary("Ask the AI travel co-pilot")]
+    [ProducesResponseType(typeof(CopilotResponse), StatusCodes.Status200OK)]
+    public Task<IResult> Copilot(CopilotRequest request, CancellationToken token)
+    {
+        var question = request.Question?.Trim();
+        var destination = request.Destination?.Trim();
+        if (question is not { Length: >= 2 and <= 500 })
+            return Task.FromResult(Invalid("question", "Enter a question between 2 and 500 characters."));
+        if (destination is { Length: > 100 })
+            return Task.FromResult(Invalid("destination", "Enter a destination of up to 100 characters."));
+
+        return provider.CopilotAsync(new CopilotRequest(question, destination), token);
+    }
+
     private static string Normalize(string? value) => value?.Trim().ToUpperInvariant() ?? "";
 
     private static IResult Invalid(string field, string message) =>

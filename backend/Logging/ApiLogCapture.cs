@@ -12,7 +12,7 @@ internal static class ApiLogCapture
         "authorization", "cookie", "setcookie", "password", "secret", "clientsecret", "token",
         "accesstoken", "refreshtoken", "accesskey", "apikey", "xapikey", "groqapikey", "tavilyapikey",
         "aviationstackapikey", "railwayapikey", "connectionstring", "phonenumber", "phone", "mobile",
-        "email", "otp", "code", "developmentcode", "challengeid"
+        "email", "otp", "code", "developmentcode", "challengeid", "question", "answer"
     };
 
     private static readonly string[] TravelQueryFields =

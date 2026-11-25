@@ -1,0 +1,101 @@
+<main class="phone-shell auth-screen" [class.verify-screen]="challenge()" [class.onboarding]="signup">
+  @if (signup) {
+    <header class="calibration"><span>AI CALIBRATION</span><span>Step 3 of 3</span></header>
+    <div class="calibration-track"></div>
+    <section class="screen-intro">
+      <h1>Tailor your AI co-pilot</h1>
+      <p>Set your home airport and signature travel rhythm.</p>
+    </section>
+    <form class="onboarding-form" (submit)="submit($event)">
+      <section class="card stack">
+        <label>Traveler name<input name="displayName" autocomplete="nickname" maxlength="100" placeholder="Your name" required></label>
+        <div>
+          <div class="split caption"><span>Home Airport Hub</span><span class="teal">Auto-fills routes</span></div>
+          <div class="chips">
+            @for (hub of airports; track hub.code) {
+              <button class="chip" [class.selected]="airport() === hub.code" type="button"
+                [attr.aria-pressed]="airport() === hub.code" (click)="airport.set(hub.code)">
+                {{ airport() === hub.code ? hub.code + ' · ' + hub.name : hub.code }}
+              </button>
+            }
+          </div>
+        </div>
+      </section>
+      <section class="persona-section">
+        <h2 class="small-heading">Choose Travel Persona</h2>
+        <div class="personas">
+          @for (item of personas; track item.name) {
+            <button class="persona" [class.chosen]="persona() === item.name" type="button"
+              [attr.aria-pressed]="persona() === item.name" (click)="persona.set(item.name)">
+              <span class="persona-icon" aria-hidden="true">{{ item.icon }}</span>
+              <strong>{{ item.name }}</strong><small>{{ item.description }}</small>
+            </button>
+          }
+        </div>
+      </section>
+      @if (error()) { <p class="message error" role="alert">{{ error() }}</p> }
+      <button class="primary" type="submit" [disabled]="busy()">{{ busy() ? 'Creating account…' : 'Launch WanderAI ✦' }}</button>
+      <a class="subtle-link" routerLink="/login">Back to sign in</a>
+    </form>
+  } @else if (challenge(); as current) {
+    <header class="split verify-top">
+      <button class="icon-button" aria-label="Change number" type="button" (click)="changeNumber()" [disabled]="busy()">←</button>
+      <span class="badge">SMS Security Check</span>
+    </header>
+    <section class="screen-intro">
+      <h1>Verify your number</h1>
+      <p>{{ current.developmentCode ? 'Development code for' : 'Enter the configured test code for' }}
+        <strong>{{ maskedPhone }}</strong> · <button class="text-button" type="button" (click)="changeNumber()" [disabled]="busy()">Edit</button></p>
+    </section>
+    <form class="card stack otp-card" (submit)="submit($event)">
+      <label class="caption" for="otp">6-DIGIT PASSCODE</label>
+      <div class="otp-field">
+        <div class="otp-cells" aria-hidden="true">
+          @for (digit of digits; track digit) {
+            <span [class.next]="digit === otp().length">{{ otp()[digit] || '' }}</span>
+          }
+        </div>
+        <input id="otp" name="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" required
+          [value]="otp()" (input)="updateDigits($event)">
+      </div>
+      @if (current.developmentCode) { <p class="dev-code">Development code <strong>{{ current.developmentCode }}</strong></p> }
+      <div class="split caption resend-row"><span>Didn’t receive a code?</span>
+        @if (resendSeconds() > 0) {
+          <span>Resend code in <strong class="orange">00:{{ resendSeconds().toString().padStart(2, '0') }}</strong></span>
+        } @else {
+          <button class="text-button" type="button" (click)="sendCode()" [disabled]="busy()">Resend code</button>
+        }
+      </div>
+      @if (error()) { <p class="message error" role="alert">{{ error() }}</p> }
+      <button class="primary" type="submit" [disabled]="busy() || otp().length !== 6">{{ busy() ? 'Verifying…' : 'Verify & Continue ✓' }}</button>
+    </form>
+    <a class="subtle-link" routerLink="/preview">Explore without signing in ↗</a>
+  } @else {
+    <header class="welcome-art">
+      <div class="welcome-landscape" aria-hidden="true"><i></i><i></i><i></i><span>✦</span></div>
+      <div class="split"><span class="dark-pill"><b></b> WanderAI</span><span class="teal-pill">AI Travel Planner</span></div>
+      <div class="welcome-copy"><h1>Plan smarter journeys with AI</h1><p>Tailored day-by-day routes and travel ideas for your next trip.</p></div>
+    </header>
+    <form class="card stack mobile-login" (submit)="submit($event)">
+      <div><h2>Continue with mobile</h2><p class="caption">Enter your number to get a verification code.</p></div>
+      <div>
+        <label class="caption" for="phone">MOBILE NUMBER</label>
+        <div class="phone-row"><span class="chip country">IN +91</span>
+          <div class="phone-input"><input id="phone" name="phone" type="tel" inputmode="numeric"
+            autocomplete="tel-national" pattern="[0-9]{10}" placeholder="98765 43210" required
+            [value]="phone.slice(3)" (input)="updateDigits($event, true)">
+            <span class="caption teal">{{ phoneCount() }}/10</span>
+          </div>
+        </div>
+      </div>
+      @if (error()) { <p class="message error" role="alert">{{ error() }}</p> }
+      <button class="primary" type="submit" [disabled]="busy()">{{ busy() ? 'Requesting code…' : 'Send OTP →' }}</button>
+      <p class="divider-label">Or continue with</p>
+      <div class="social-row">
+        <button class="chip" type="button" disabled title="Google sign-in is not configured">G Google</button>
+        <button class="chip" type="button" disabled title="Apple sign-in is not configured"> Apple</button>
+      </div>
+    </form>
+    <a class="subtle-link guest-link" routerLink="/preview">Explore without signing in ↗</a>
+  }
+</main>

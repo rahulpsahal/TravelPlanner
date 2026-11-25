@@ -1,0 +1,358 @@
+<main class="phone-shell app-screen" [class.chat-screen]="screen() === 'copilot'">
+  @if (sessionError()) { <p class="message error" role="alert">{{ sessionError() }}</p> }
+  @switch (screen()) {
+    @case ('discover') {
+      <section class="discover">
+        <header class="split">
+          <div><div class="caption teal">● Departing {{ profile().airport }}</div>
+            <h1>Hi {{ user()?.displayName?.split(' ')?.[0] || 'Traveler' }} · From {{ profile().airport }}</h1></div>
+          <button class="icon-button orange" type="button" aria-label="Open wallet" (click)="open('wallet')">
+            {{ user()?.displayName?.slice(0, 1)?.toUpperCase() || '↗' }}
+          </button>
+        </header>
+        <form class="card discover-search" (submit)="$event.preventDefault(); plan(search.value)">
+          <label class="discover-input"><span aria-hidden="true" class="persona-icon">✦</span>
+            <input #search aria-label="Where to next?" placeholder="Where to next? Ask anything…" maxlength="100">
+          </label>
+          <div class="split"><button class="chip" type="button" (click)="open('copilot')">✧ Ask Co-Pilot</button>
+            <button class="primary compact-button">Plan Trip →</button></div>
+        </form>
+        <div class="chips discover-chips">
+          <button class="chip" (click)="plan('Coorg, India')">🌿 Weekend near {{ profile().airport }}</button>
+          <button class="chip outlined" (click)="plan('Kyoto, Japan')">🍁 Kyoto in Autumn</button>
+          <button class="chip" (click)="plan('Goa, India')">☀ Goa escape</button>
+        </div>
+        <section class="discover-matches">
+          <div class="split"><h2 class="small-heading">Destination ideas</h2>
+            <button class="text-button" type="button" (click)="plan()">Plan your own</button></div>
+          <button class="destination-card kyoto" type="button" (click)="plan('Kyoto, Japan')">
+            <span class="teal-pill">✦ Trip idea</span><div><strong>Kyoto, Japan</strong><small>Cedar shrines and Nishiki Market</small></div>
+          </button>
+          <button class="destination-card coorg" type="button" (click)="plan('Coorg, India')">
+            <span class="teal-pill">✦ Trip idea</span><div><strong>Coorg, India</strong><small>Shade-grown coffee estates and mist</small></div>
+          </button>
+        </section>
+      </section>
+    }
+    @case ('planner') {
+      <header class="screen-title"><p class="eyebrow">AI TRIP ARCHITECT</p><h1>Create AI Itinerary</h1></header>
+      <div class="chips tools" aria-label="Planner tools">
+        @for (view of views; track view.id) {
+          <button type="button" class="chip" [class.selected]="currentView() === view.id"
+            [attr.aria-pressed]="currentView() === view.id" [disabled]="busy()" (click)="select(view.id)">{{ view.name }}</button>
+        }
+      </div>
+    <section class="panel" aria-label="Planner form">
+      <form (submit)="submit($event)" [attr.aria-busy]="busy()">
+        @switch (currentView()) {
+          @case ('plan') {
+            <h2 id="planner-title">Plan a trip</h2>
+            <p class="muted">Compare sample round-trip flights and stays in INR on the Delhi to Goa route.</p>
+            <div class="fields">
+              <label>From <input name="origin" value="Delhi" required></label>
+              <label>To <input name="destination" value="Goa" required></label>
+              <label>Departure <input name="departureDate" type="date" [value]="departure" [min]="today" required></label>
+              <label>Return <input name="returnDate" type="date" [value]="returnDate" [min]="today" required></label>
+              <label>Travelers <input name="travelers" type="number" min="1" max="100" value="2" required></label>
+              <label>Total budget (₹) <input name="budget" type="number" min="1" step="0.01" value="25000" required></label>
+            </div>
+          }
+          @case ('hotels') {
+            <h2 id="planner-title">Find a stay</h2>
+            <p class="muted">Find hotel listing pages. Check room rates and availability with the provider.</p>
+            <div class="fields compact">
+              <label>Destination <input name="destination" value="Goa" minlength="2" maxlength="100" required></label>
+            </div>
+          }
+          @case ('flights') {
+            <h2 id="planner-title">Check flight status</h2>
+            <p class="muted">Enter two airport codes or a flight number. Flight fares are separate from status data.</p>
+            <div class="fields compact">
+              <label>Origin airport <input name="origin" [value]="user() ? profile().airport : 'DEL'" maxlength="3" placeholder="DEL"></label>
+              <label>Destination airport <input name="destination" value="GOI" maxlength="3" placeholder="GOI"></label>
+              <label>Flight code (optional) <input name="flightCode" maxlength="7" placeholder="AI101"></label>
+            </div>
+          }
+          @case ('train') {
+            <h2 id="planner-title">Look up a train fare</h2>
+            <p class="muted">Enter a known Indian Railways train and class. Check seat availability on IRCTC.</p>
+            <div class="fields">
+              <label>Train number <input name="trainNumber" inputmode="numeric" pattern="[0-9]{5}" placeholder="12919" required></label>
+              <label>From station <input name="source" placeholder="DADN" maxlength="8" required></label>
+              <label>To station <input name="destination" placeholder="SVDK" maxlength="8" required></label>
+              <label>Class
+                <select name="travelClass"><option value="3A">3A · AC 3-tier</option><option value="2A">2A · AC 2-tier</option>
+                  <option value="1A">1A · First AC</option><option value="SL">SL · Sleeper</option><option value="CC">CC · Chair car</option>
+                  <option value="EC">EC · Executive chair car</option><option value="2S">2S · Second sitting</option></select>
+              </label>
+              <label>Travel date <input name="date" type="date" [value]="departure" required></label>
+              <label>Quota <input name="quota" value="GN" maxlength="2" required></label>
+            </div>
+          }
+          @case ('itinerary') {
+            <section class="card stack">
+              <label>Destination<input name="destination" placeholder="📍 Kyoto, Japan" [value]="destination()" maxlength="100" required></label>
+            </section>
+            <section class="card stack">
+              <div class="split">
+                <strong>Trip Duration</strong>
+                <div class="stepper">
+                  <button type="button" aria-label="Decrease trip duration" (click)="days.set(days() - 1)" [disabled]="days() <= 1">−</button>
+                  <strong>{{ days() }} {{ days() === 1 ? 'Day' : 'Days' }}</strong>
+                  <button type="button" aria-label="Increase trip duration" (click)="days.set(days() + 1)" [disabled]="days() >= 14">+</button>
+                </div>
+              </div>
+              <div><p class="small-heading">Companion</p><div class="chips segmented">
+                @for (option of ['Couple', 'Solo', 'Friends', 'Family']; track option) {
+                  <button type="button" class="chip" [class.selected]="companion() === option"
+                    [attr.aria-pressed]="companion() === option" (click)="companion.set(option)">{{ option }}</button>
+                }
+              </div></div>
+            </section>
+            <section class="card stack">
+              <div><p class="small-heading">Budget Tier</p><div class="chips segmented">
+                @for (option of ['Balanced', 'Budget', 'Luxe']; track option) {
+                  <button type="button" class="chip" [class.orange-selected]="budgetTier() === option"
+                    [attr.aria-pressed]="budgetTier() === option" (click)="budgetTier.set(option)">{{ option }}</button>
+                }
+              </div></div>
+              <div><p class="small-heading">Travel Pace</p><div class="chips segmented">
+                @for (option of ['Relaxed', 'Moderate', 'Packed']; track option) {
+                  <button type="button" class="chip" [class.teal-selected]="pace() === option"
+                    [attr.aria-pressed]="pace() === option" (click)="pace.set(option)">{{ option }}</button>
+                }
+              </div></div>
+            </section>
+            <section class="card stack"><strong>Interests</strong><div class="chips">
+              @for (interest of interestOptions; track interest) {
+                <button type="button" class="chip" [class.outlined]="interests().includes(interest)"
+                  [attr.aria-pressed]="interests().includes(interest)"
+                  (click)="interests.set(toggle(interests(), interest))">{{ interest }}</button>
+              }
+            </div></section>
+          }
+        }
+        @if (error()) { <p class="message error" role="alert">{{ error() }}</p> }
+        <button class="primary" type="submit" [disabled]="busy()">
+          {{ busy() ? 'Loading…' : currentView() === 'plan' ? 'Compare options' : currentView() === 'itinerary' ? '✦ Generate Smart Itinerary' : 'Search' }}
+          <span aria-hidden="true">→</span>
+        </button>
+      </form>
+    </section>
+
+    <section class="results" aria-live="polite" aria-atomic="false">
+      @switch (currentView()) {
+        @case ('plan') {
+          @if (trip(); as result) {
+            <h2>{{ result.origin }} <span aria-hidden="true">→</span> {{ result.destination }}</h2>
+            <p class="muted">
+              {{ result.nights }} {{ result.nights === 1 ? 'night' : 'nights' }} ·
+              {{ result.travelers }} {{ result.travelers === 1 ? 'traveler' : 'travelers' }} ·
+              {{ result.rooms }} {{ result.rooms === 1 ? 'room' : 'rooms' }} · Sample prices
+            </p>
+            @if (!result.hasWithinBudgetOptions) { <p class="message">No options fit your budget. Here is the lowest total.</p> }
+            <div class="result-grid">
+              @for (option of result.options; track option.flight.name + option.hotel.name) {
+                <article class="result-card">
+                  <div class="price">{{ option.total | currency:'INR':'symbol':'1.0-2' }}</div>
+                  <p [class.over-budget]="option.budgetDifference < 0">
+                    {{ (option.budgetDifference < 0 ? -option.budgetDifference : option.budgetDifference) | currency:'INR':'symbol':'1.0-2' }}
+                    {{ option.budgetDifference < 0 ? 'over budget' : 'left in budget' }}
+                  </p>
+                  <dl>
+                    <div><dt>{{ option.flight.name }}</dt><dd>{{ option.transportTotal | currency:'INR':'symbol':'1.0-2' }}</dd></div>
+                    <div><dt>{{ option.hotel.name }}</dt><dd>{{ option.lodgingTotal | currency:'INR':'symbol':'1.0-2' }}</dd></div>
+                  </dl>
+                  <button class="chip outlined" type="button" (click)="choose(option)">Add to wallet</button>
+                  <div class="result-links">
+                    <a [href]="option.flight.providerSearchUrl" target="_blank" rel="noopener noreferrer">Search flights ↗</a>
+                    <a [href]="option.hotel.providerSearchUrl" target="_blank" rel="noopener noreferrer">Search stays ↗</a>
+                  </div>
+                </article>
+              }
+            </div>
+          }
+        }
+        @case ('hotels') {
+          @if (hotels(); as result) {
+            <h2>Hotel listings</h2><p class="muted">Source · {{ result.provider }}</p>
+            <div class="result-grid">
+              @for (hotel of result.results; track $index) {
+                <article class="result-card"><h3>{{ hotel.title || 'Hotel listing' }}</h3>
+                  <p class="muted snippet">{{ hotel.content }}</p>
+                  <a [href]="hotel.url" target="_blank" rel="noopener noreferrer">Open listing ↗</a>
+                </article>
+              } @empty { <p class="message">No hotel listings found.</p> }
+            </div>
+          }
+        }
+        @case ('flights') {
+          @if (flights(); as result) {
+            <h2>Flight results</h2><p class="muted">Source · {{ result.provider }}</p>
+            <div class="result-grid">
+              @for (flight of result.results; track $index) {
+                <article class="result-card">
+                  <h3>{{ flight.flightCode || 'Flight' }} · {{ flight.airline || 'Airline unavailable' }}</h3>
+                  <p class="flight-route">{{ flight.departure?.iata || '—' }} → {{ flight.arrival?.iata || '—' }}</p>
+                  <p class="muted">{{ flight.status || 'Status unavailable' }} @if (flight.flightDate) { · {{ flight.flightDate }} }</p>
+                  @if (flight.departure?.scheduled) {
+                    <p>Scheduled departure {{ flight.departure?.scheduled | date:'medium' }}</p>
+                  }
+                  @if (flight.arrival?.scheduled) {
+                    <p>Scheduled arrival {{ flight.arrival?.scheduled | date:'medium' }}</p>
+                  }
+                </article>
+              } @empty { <p class="message">No matching flights found.</p> }
+            </div>
+          }
+        }
+        @case ('train') {
+          @if (fare(); as result) {
+            <h2>{{ result.trainName || 'Train' }} · {{ result.trainNumber }}</h2>
+            <article class="result-card">
+              <p>{{ result.source }} → {{ result.destination }} · {{ result.travelClass }} · {{ result.date }}</p>
+              <div class="price">{{ result.totalFare === null ? 'Fare unavailable' : (result.totalFare | currency:'INR':'symbol':'1.0-2') }}</div>
+              <p class="muted">Source · {{ result.provider }} @if (result.status === 'STALE_DATA') { · Cached fare }</p>
+              <a [href]="result.bookingSearchUrl" target="_blank" rel="noopener noreferrer">Check availability on IRCTC ↗</a>
+            </article>
+          }
+        }
+
+      }
+    </section>
+    }
+    @case ('itinerary') {
+      <header class="split screen-title"><div><p class="eyebrow">AI ROUTE</p>
+        <h1>{{ itineraryTrip() ? itineraryTrip()!.destination + ' · ' + itineraryTrip()!.days + ' Days' : 'Your itinerary' }}</h1></div>
+        <button class="chip" type="button" (click)="plan()" [disabled]="busy()">{{ itineraryTrip() ? 'Edit' : 'Plan trip' }}</button></header>
+      @if (itineraryTrip()) {
+        <div class="chips day-tabs">
+          @for (activities of itineraryDays(); track $index) {
+            <button class="chip" type="button" [class.selected]="day() === $index" [attr.aria-pressed]="day() === $index"
+              [disabled]="busy()" (click)="day.set($index)">Day {{ $index + 1 }}</button>
+          }
+        </div>
+        <div class="card timeline-tabs chips segmented">
+          <button class="chip" type="button" [class.selected]="itineraryTab() === 'timeline'" (click)="itineraryTab.set('timeline')">🗺 Timeline</button>
+          <button class="chip" type="button" [class.selected]="itineraryTab() === 'packing'" (click)="itineraryTab.set('packing')">🎒 Packing & Split</button>
+        </div>
+        @if (itineraryTab() === 'timeline') {
+          @if (itineraryDays()[day()]; as activities) {
+            @if (activities.length) {
+              <section class="card route-card" aria-label="Suggested sequence">
+                <div class="route-illustration">
+                  @for (activity of activities.slice(0, 3); track $index) {
+                    <div class="route-stop"><span>{{ $index + 1 }}</span><small>{{ activity.title }}</small></div>
+                  }
+                </div>
+              </section>
+              <section class="activity-list" aria-label="Daily activities">
+                @for (activity of activities; track $index) {
+                  <article class="card activity">
+                    <div><div class="eyebrow">{{ activity.time }}</div><strong>{{ activity.title }}</strong>
+                      @if (activity.detail) { <p class="caption">{{ activity.detail }}</p> }</div>
+                    <button class="chip" type="button" [disabled]="busy()" (click)="swap(activity, $index)">↻ Swap with AI</button>
+                    @if (activitySwaps()[day() + '-' + $index]; as suggestion) {
+                      <p class="swap-suggestion"><strong>Suggested swap</strong><br>{{ suggestion }}</p>
+                    }
+                  </article>
+                }
+              </section>
+            } @else { <p class="message">No activities were returned for this day.</p> }
+          }
+        } @else {
+          <section class="card stack packing-card">
+            <h2 class="small-heading">Packing checklist</h2>
+            @for (item of packingItems; track item) {
+              <label class="check-label"><input type="checkbox" [checked]="packing().includes(item)"
+                (change)="packing.set(toggle(packing(), item))">{{ item }}</label>
+            }
+          </section>
+          <section class="card stack packing-card">
+            <h2 class="small-heading">Split the trip cost</h2>
+            @if (picked(); as option) {
+              <strong>{{ option.total / (trip()?.travelers || 1) | currency:'INR':'symbol':'1.0-2' }} per traveler</strong>
+            } @else { <p class="caption">Add a comparison option to your wallet to see the split.</p> }
+          </section>
+        }
+      } @else {
+        <p class="card empty-card">Generate an itinerary in Planner to see your day-by-day route.</p>
+      }
+      @if (error()) { <p class="message error" role="alert">{{ error() }}</p> }
+    }
+    @case ('copilot') {
+      <header class="copilot-header">
+        <span class="persona-icon" aria-hidden="true">✦</span>
+        <div><h1>WanderAI Co-Pilot</h1>
+          <p class="caption teal">{{ itineraryTrip() ? 'Trip context · ' + itineraryTrip()!.destination + ' · Day ' + (day() + 1) : 'Travel planning assistant' }}</p>
+        </div>
+      </header>
+      <section class="chat-log" aria-live="polite">
+        @for (message of messages(); track $index) {
+          <p class="chat-question">{{ message.question }}</p>
+          <article class="card chat-answer"><span class="badge">✦ Co-Pilot</span><p>{{ message.answer }}</p></article>
+        }
+        @if (!messages().length) { <p class="caption chat-empty">Ask about a destination, how to get around, or what to do next.</p> }
+        @if (error()) { <p class="message error" role="alert">{{ error() }}</p> }
+      </section>
+      <div class="chat-controls">
+        <div class="chips">
+          @for (suggestion of ['🍵 Tea spots', '🌇 Sunset views', '▥ Train tips']; track suggestion) {
+            <button class="chip" type="button" [disabled]="busy()" (click)="chatInput.set(suggestion)">{{ suggestion }}</button>
+          }
+        </div>
+        <form class="chat-form" (submit)="ask($event)">
+          <input aria-label="Ask WanderAI anything" placeholder="Ask WanderAI anything…" [value]="chatInput()"
+            (input)="chatInput.set($any($event.target).value)" maxlength="500" required>
+          <button class="primary compact-button" type="submit" [disabled]="busy() || chatInput().trim().length < 2">{{ busy() ? 'Waiting…' : 'Send' }}</button>
+        </form>
+      </div>
+    }
+    @case ('wallet') {
+      <section class="wallet stack">
+        <header class="card wallet-profile">
+          <span class="avatar">{{ user()?.displayName?.slice(0, 1)?.toUpperCase() || '↗' }}</span>
+          <div><strong>{{ user()?.displayName || 'Traveler' }}</strong>
+            @if (user(); as account) { <span class="badge">✓ Verified</span>
+              <p class="caption">+91 ••••• {{ account.phoneNumber.slice(-5) }} · {{ profile().persona }}</p>
+            } @else { <p class="caption">Guest preview</p> }
+          </div>
+          @if (!publicPreview && user()) {
+            <button class="chip" type="button" [disabled]="signingOut()" (click)="signOut()">{{ signingOut() ? 'Signing out…' : 'Sign Out' }}</button>
+          } @else { <a class="chip" routerLink="/login">Sign In</a> }
+        </header>
+        @if (picked(); as option) {
+          <div class="wallet-route">{{ trip()?.origin }} → {{ trip()?.destination }} <span>Sample trip</span></div>
+          <article class="card ticket">
+            <header>Flight selection</header>
+            <div class="ticket-body"><strong>{{ option.flight.name }}</strong>
+              <p class="caption">Round-trip sample cost</p><div>{{ option.transportTotal | currency:'INR':'symbol':'1.0-2' }}</div>
+              <a [href]="option.flight.providerSearchUrl" target="_blank" rel="noopener noreferrer">Search flights ↗</a></div>
+          </article>
+          <article class="card stack voucher">
+            <span class="eyebrow">STAY SELECTION</span><strong>{{ option.hotel.name }}</strong>
+            <p class="caption">{{ trip()?.nights }} nights · {{ option.lodgingTotal | currency:'INR':'symbol':'1.0-2' }}</p>
+            <a [href]="option.hotel.providerSearchUrl" target="_blank" rel="noopener noreferrer">Search stays ↗</a>
+          </article>
+          <article class="card stack budget"><div class="split"><strong>Trip Budget Tracker</strong><span class="chip">INR ₹</span></div>
+            <div><strong>{{ option.total | currency:'INR':'symbol':'1.0-2' }}</strong> / {{ trip()?.budget | currency:'INR':'symbol':'1.0-2' }}</div>
+            <progress aria-label="Share of trip budget used" [value]="option.total" [max]="trip()?.budget || 1"></progress>
+            @if (option.budgetDifference < 0) {
+              <p class="over-budget">{{ -option.budgetDifference | currency:'INR':'symbol':'1.0-2' }} over budget</p>
+            }
+          </article>
+        } @else {
+          <article class="card stack empty-card"><h1>Trip Wallet</h1><p class="caption">Choose a trip comparison to track its sample costs here.</p>
+            <button class="primary" type="button" (click)="select('plan'); open('planner')">Compare a trip →</button>
+          </article>
+        }
+      </section>
+    }
+  }
+  <nav class="bottom-nav" aria-label="Travel Planner navigation">
+    @for (item of screens; track item.id) {
+      <button type="button" [class.active]="screen() === item.id" [attr.aria-current]="screen() === item.id ? 'page' : null"
+        [disabled]="busy()" (click)="open(item.id)"><span aria-hidden="true">{{ item.icon }}</span>{{ item.name }}</button>
+    }
+  </nav>
+</main>

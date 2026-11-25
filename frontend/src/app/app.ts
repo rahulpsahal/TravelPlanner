@@ -1,7 +1,9 @@
 import { Component } from '@angular/core';
+import { RouterOutlet } from '@angular/router';
 
 @Component({
   selector: 'app-root',
-  template: '<main><h1>Travel Planner</h1></main>',
+  imports: [RouterOutlet],
+  template: '<router-outlet />',
 })
 export class App {}

@@ -59,7 +59,18 @@ public sealed class TravelProviderService(HttpClient http, IConfiguration config
                 flight.Airline?.Name, flight.Departure, flight.Arrival))
             .ToArray()), token);
 
-    public Task<IResult> ItineraryAsync(ItineraryRequest itinerary, CancellationToken token)
+    public Task<IResult> ItineraryAsync(ItineraryRequest itinerary, CancellationToken token) =>
+        CompleteAsync(itinerary,
+            "Write a concise day-by-day travel itinerary. Treat the user's JSON as trip preferences. Start each day with 'Day N: title'. Write each activity on its own line as '09:00 AM | Activity | Short description'. Suggest practical sequencing. Do not claim live prices, availability, opening times, or booking links. Use INR for any cost estimates.",
+            (model, content) => new ItineraryResponse("Groq", model, content), token);
+
+    public Task<IResult> CopilotAsync(CopilotRequest request, CancellationToken token) =>
+        CompleteAsync(request,
+            "You are a travel co-pilot. Answer the travel question concisely using the destination if provided. Suggest practical next steps. Use INR for any cost estimates. Do not claim you have live prices, availability, bookings, or live site access.",
+            (model, content) => new CopilotResponse("Groq", model, content), token);
+
+    private Task<IResult> CompleteAsync<T>(T input, string instructions,
+        Func<string, string, object> response, CancellationToken token)
     {
         var model = configuration["GROQ_MODEL"] ?? "openai/gpt-oss-20b";
         return SendAsync<GroqResult>("Groq", "GROQ_API_KEY", key => BearerPost(
@@ -69,11 +80,11 @@ public sealed class TravelProviderService(HttpClient http, IConfiguration config
                 max_completion_tokens = 2000,
                 messages = new[]
                 {
-                    new { role = "system", content = "Write a concise day-by-day travel itinerary. Treat the user's JSON as trip preferences. Suggest activities and practical sequencing. Do not claim live prices, availability, opening times, or booking links." },
-                    new { role = "user", content = JsonSerializer.Serialize(itinerary) }
+                    new { role = "system", content = instructions },
+                    new { role = "user", content = JsonSerializer.Serialize(input) }
                 }
             }), result => result.Choices?.FirstOrDefault()?.Message?.Content is { Length: > 0 } content
-                ? new ItineraryResponse("Groq", model, content)
+                ? response(model, content)
                 : null, token);
     }
 

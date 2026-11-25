@@ -8,12 +8,14 @@ using TravelPlanner.Api.DTOs;
 
 namespace TravelPlanner.Api.Services;
 
-public sealed partial class DevelopmentOtpService(
+public sealed partial class OtpService(
     IDbContextFactory<TravelPlannerDbContext> databaseFactory,
-    ILogger<DevelopmentOtpService> logger)
+    FixedOtpSettings fixedOtp,
+    ILogger<OtpService> logger)
 {
     private static readonly TimeSpan CodeLifetime = TimeSpan.FromMinutes(5);
     private static readonly TimeSpan ResendDelay = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan FixedOtpLockout = TimeSpan.FromHours(24);
     private const int MaxAttempts = 5;
     private readonly SemaphoreSlim gate = new(1);
     private readonly byte[] codeKey = RandomNumberGenerator.GetBytes(32);
@@ -28,6 +30,9 @@ public sealed partial class DevelopmentOtpService(
             });
 
         var phone = "+91" + match.Groups[1].Value;
+        if (fixedOtp.Enabled && phone != fixedOtp.Phone)
+            return Results.Ok(new OtpChallengeResponse(Guid.NewGuid(), (int)CodeLifetime.TotalSeconds, null));
+
         await gate.WaitAsync(cancellationToken);
         try
         {
@@ -38,7 +43,9 @@ public sealed partial class DevelopmentOtpService(
             {
                 logger.LogInformation("OTP request throttled by resend cooldown");
                 return Results.Problem(
-                    detail: "Wait 30 seconds between code requests for this number.",
+                    detail: challenge.FailedAttempts >= MaxAttempts && fixedOtp.Enabled
+                        ? "Too many incorrect codes. Try again after the lockout ends."
+                        : "Wait 30 seconds between code requests for this number.",
                     statusCode: StatusCodes.Status429TooManyRequests);
             }
 
@@ -48,16 +55,18 @@ public sealed partial class DevelopmentOtpService(
                 database.OtpChallenges.Add(challenge);
             }
 
-            var code = RandomNumberGenerator.GetInt32(1_000_000).ToString("D6", CultureInfo.InvariantCulture);
+            var code = fixedOtp.Code ?? RandomNumberGenerator.GetInt32(1_000_000).ToString("D6", CultureInfo.InvariantCulture);
             challenge.Id = Guid.NewGuid();
             challenge.CodeHash = HashCode(challenge.Id, code);
             challenge.ExpiresAt = now + CodeLifetime;
             challenge.ResendAvailableAt = now + ResendDelay;
-            challenge.FailedAttempts = 0;
+            if (!fixedOtp.Enabled || challenge.FailedAttempts >= MaxAttempts)
+                challenge.FailedAttempts = 0;
             await database.SaveChangesAsync(cancellationToken);
 
-            logger.LogInformation("Development OTP challenge issued");
-            return Results.Ok(new OtpChallengeResponse(challenge.Id, (int)CodeLifetime.TotalSeconds, code));
+            logger.LogInformation("OTP challenge issued");
+            return Results.Ok(new OtpChallengeResponse(challenge.Id, (int)CodeLifetime.TotalSeconds,
+                fixedOtp.Enabled ? null : code));
         }
         finally
         {
@@ -65,7 +74,7 @@ public sealed partial class DevelopmentOtpService(
         }
     }
 
-    public async Task<IResult> VerifyAsync(OtpVerification request, CancellationToken cancellationToken)
+    public async Task<string?> VerifyAsync(OtpVerification request, CancellationToken cancellationToken)
     {
         await gate.WaitAsync(cancellationToken);
         try
@@ -74,10 +83,11 @@ public sealed partial class DevelopmentOtpService(
             var challenge = await database.OtpChallenges.SingleOrDefaultAsync(
                 item => item.Id == request.ChallengeId, cancellationToken);
 
-            if (challenge?.CodeHash is null || challenge.ExpiresAt <= DateTimeOffset.UtcNow)
+            if (challenge?.CodeHash is null || challenge.ExpiresAt <= DateTimeOffset.UtcNow
+                || (fixedOtp.Enabled && challenge.PhoneNumber != fixedOtp.Phone))
             {
                 logger.LogInformation("OTP verification rejected for an unavailable challenge");
-                return InvalidCode();
+                return null;
             }
 
             if (request.Code is not { Length: 6 } ||
@@ -85,22 +95,27 @@ public sealed partial class DevelopmentOtpService(
             {
                 challenge.FailedAttempts++;
                 if (challenge.FailedAttempts >= MaxAttempts)
+                {
                     challenge.CodeHash = null;
+                    if (fixedOtp.Enabled)
+                        challenge.ResendAvailableAt = DateTimeOffset.UtcNow + FixedOtpLockout;
+                }
 
                 await database.SaveChangesAsync(cancellationToken);
                 logger.LogInformation("OTP verification rejected. Failed attempts: {FailedAttempts}", challenge.FailedAttempts);
-                return InvalidCode();
+                return null;
             }
 
             challenge.CodeHash = null;
+            challenge.FailedAttempts = 0;
             await database.SaveChangesAsync(cancellationToken);
-            logger.LogInformation("Development OTP verification succeeded");
-            return Results.Ok(new OtpVerificationResponse("signup_required"));
+            logger.LogInformation("OTP verification succeeded");
+            return challenge.PhoneNumber;
         }
         catch (DbUpdateConcurrencyException)
         {
             logger.LogInformation("OTP verification rejected because the challenge changed");
-            return InvalidCode();
+            return null;
         }
         finally
         {
@@ -110,11 +125,6 @@ public sealed partial class DevelopmentOtpService(
 
     private byte[] HashCode(Guid id, string code) =>
         HMACSHA256.HashData(codeKey, Encoding.UTF8.GetBytes($"{id:N}:{code}"));
-
-    private static IResult InvalidCode() => Results.ValidationProblem(new Dictionary<string, string[]>
-    {
-        ["code"] = ["The code is invalid or expired. Request a new code if needed."]
-    });
 
     [GeneratedRegex(@"^(?:\+91\s*)?([6-9][0-9]{9})$")]
     private static partial Regex IndianMobileNumber();

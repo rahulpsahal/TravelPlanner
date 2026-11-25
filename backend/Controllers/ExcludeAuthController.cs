@@ -4,8 +4,8 @@ using Microsoft.AspNetCore.Mvc.Controllers;
 
 namespace TravelPlanner.Api.Controllers;
 
-internal sealed class ExcludeDevelopmentOtp : IApplicationFeatureProvider<ControllerFeature>
+internal sealed class ExcludeAuthController : IApplicationFeatureProvider<ControllerFeature>
 {
     public void PopulateFeature(IEnumerable<ApplicationPart> parts, ControllerFeature feature) =>
-        feature.Controllers.Remove(typeof(DevelopmentOtpController).GetTypeInfo());
+        feature.Controllers.Remove(typeof(AuthController).GetTypeInfo());
 }

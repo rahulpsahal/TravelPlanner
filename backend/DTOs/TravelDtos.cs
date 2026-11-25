@@ -27,4 +27,6 @@ public sealed record FlightAirport(
     string? Airport, string? Iata, string? Scheduled, string? Estimated, string? Actual);
 public sealed record ItineraryRequest(string? Destination, int Days, string? Interests);
 public sealed record ItineraryResponse(string Provider, string Model, string Itinerary);
+public sealed record CopilotRequest(string? Question, string? Destination);
+public sealed record CopilotResponse(string Provider, string Model, string Answer);
 
