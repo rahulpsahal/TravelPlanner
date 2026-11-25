@@ -4,12 +4,13 @@ using System.Text;
 using System.Text.RegularExpressions;
 using Microsoft.EntityFrameworkCore;
 using TravelPlanner.Api.Data;
+using TravelPlanner.Api.DTOs;
 
-namespace TravelPlanner.Api.Auth;
+namespace TravelPlanner.Api.Services;
 
-internal sealed partial class DevelopmentOtp(
+public sealed partial class DevelopmentOtpService(
     IDbContextFactory<TravelPlannerDbContext> databaseFactory,
-    ILogger<DevelopmentOtp> logger)
+    ILogger<DevelopmentOtpService> logger)
 {
     private static readonly TimeSpan CodeLifetime = TimeSpan.FromMinutes(5);
     private static readonly TimeSpan ResendDelay = TimeSpan.FromSeconds(30);
@@ -118,8 +119,3 @@ internal sealed partial class DevelopmentOtp(
     [GeneratedRegex(@"^(?:\+91\s*)?([6-9][0-9]{9})$")]
     private static partial Regex IndianMobileNumber();
 }
-
-internal sealed record OtpRequest(string? PhoneNumber);
-internal sealed record OtpChallengeResponse(Guid ChallengeId, int ExpiresInSeconds, string DevelopmentCode);
-internal sealed record OtpVerification(Guid ChallengeId, string? Code);
-internal sealed record OtpVerificationResponse(string Status);

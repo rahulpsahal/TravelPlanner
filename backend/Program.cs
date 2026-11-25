@@ -1,61 +1,69 @@
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
-using TravelPlanner.Api.Auth;
+using TravelPlanner.Api.Controllers;
 using TravelPlanner.Api.Data;
-using TravelPlanner.Api.Trips;
+using TravelPlanner.Api.Logging;
+using TravelPlanner.Api.Services;
 
 var builder = WebApplication.CreateBuilder(args);
-builder.Services.AddEndpointsApiExplorer();
+var controllers = builder.Services.AddControllers();
+if (!builder.Environment.IsDevelopment())
+    controllers.ConfigureApplicationPartManager(parts => parts.FeatureProviders.Add(new ExcludeDevelopmentOtp()));
+
 builder.Services.AddSwaggerGen();
-if (builder.Environment.IsDevelopment())
+builder.Services.AddSingleton<TripPreviewService>();
+builder.Services.AddHttpClient<TravelProviderService>(client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(15);
+    client.MaxResponseContentBufferSize = 2 * 1024 * 1024;
+})
+    // Aviationstack puts the API key in the query string.
+    .RemoveAllLoggers()
+    .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false });
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.AddFixedWindowLimiter("travel-providers", limiter =>
+    {
+        limiter.PermitLimit = 10;
+        limiter.Window = TimeSpan.FromMinutes(1);
+    });
+    options.AddFixedWindowLimiter("development-otp", limiter =>
+    {
+        limiter.PermitLimit = 60;
+        limiter.Window = TimeSpan.FromMinutes(1);
+    });
+});
+
+var connectionString = builder.Configuration.GetConnectionString("TravelPlanner");
+if (!string.IsNullOrWhiteSpace(connectionString))
 {
     builder.Services.AddDbContextFactory<TravelPlannerDbContext>(options =>
-        options.UseSqlServer(builder.Configuration.GetConnectionString("TravelPlanner")));
-    builder.Services.AddSingleton<DevelopmentOtp>();
-    builder.Services.AddRateLimiter(options =>
-    {
-        options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
-        options.AddFixedWindowLimiter("development-otp", limiter =>
-        {
-            limiter.PermitLimit = 60;
-            limiter.Window = TimeSpan.FromMinutes(1);
-        });
-    });
+        options.UseSqlServer(connectionString));
+}
+
+if (builder.Environment.IsDevelopment())
+{
+    builder.Services.AddSingleton<DevelopmentOtpService>();
 }
 
 var app = builder.Build();
+app.UseRouting();
+app.UseMiddleware<ApiRequestResponseLogging>();
+app.UseRateLimiter();
 
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
     app.UseSwaggerUI();
-    app.UseRouting();
-    app.UseRateLimiter();
-
-    var auth = app.MapGroup("/api/auth/otp")
-        .WithTags("Development OTP")
-        .RequireRateLimiting("development-otp");
-    auth.MapPost("/request", (OtpRequest request, DevelopmentOtp otp, CancellationToken cancellationToken) =>
-        otp.RequestAsync(request, cancellationToken))
-        .Produces<OtpChallengeResponse>()
-        .ProducesValidationProblem()
-        .Produces(StatusCodes.Status429TooManyRequests);
-    auth.MapPost("/verify", (OtpVerification request, DevelopmentOtp otp, CancellationToken cancellationToken) =>
-        otp.VerifyAsync(request, cancellationToken))
-        .Produces<OtpVerificationResponse>()
-        .ProducesValidationProblem()
-        .Produces(StatusCodes.Status429TooManyRequests);
 }
 
 app.UseDefaultFiles();
 app.UseStaticFiles();
 
-app.MapGet("/api/health", () => Results.Ok(new { status = "ok" }));
-app.MapPost("/api/trips/preview", TripPreview.Create)
-    .WithSummary("Compare sample Delhi to Goa trip options")
-    .WithDescription("Use future dates in YYYY-MM-DD format and a total budget in INR.")
-    .ProducesValidationProblem();
-app.MapFallback("/api/{**path}", () => Results.NotFound());
+app.MapControllers();
+app.MapFallback("/api/{**path}", () => Results.NotFound())
+    .WithName(ApiLogNames.ApiNotFoundReqResp);
 app.MapFallbackToFile("index.html");
 
 app.Run();

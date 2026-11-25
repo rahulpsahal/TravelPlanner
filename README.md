@@ -17,8 +17,11 @@ Travel Planner helps travelers compare transport and lodging against a shared bu
 | Path | Purpose |
 | --- | --- |
 | [frontend/](frontend/) | Angular app and development proxy |
-| [backend/Program.cs](backend/Program.cs) | API routes, Swagger, and static file hosting |
-| [backend/Trips/TripPreview.cs](backend/Trips/TripPreview.cs) | Trip validation, sample offers, and budget calculations |
+| [backend/Program.cs](backend/Program.cs) | Service registration, middleware, Swagger, and static file hosting |
+| [backend/Controllers/](backend/Controllers/) | HTTP routes, binding, and Swagger response metadata |
+| [backend/DTOs/](backend/DTOs/) | Public request and response contracts |
+| [backend/Services/](backend/Services/) | OTP processing, trip calculations, and external provider integrations |
+| [backend/Logging/](backend/Logging/) | Shared request and response logging and endpoint name constants |
 | [backend/Data/](backend/Data/) | EF Core context, authentication models, and SQL Server migrations |
 | [backend/TravelPlanner.Api.http](backend/TravelPlanner.Api.http) | Example HTTP requests |
 | [Dockerfile](Dockerfile) | Packages Angular and ASP.NET Core as one web service |
@@ -92,24 +95,45 @@ Open the [Angular starter page](http://localhost:4200/). The [proxied health end
 
 Once the repository is available to Render, create a Blueprint using [render.yaml](render.yaml). You can also create a Free Docker web service manually using the root Dockerfile and `/api/health` as the health check path. The container serves Angular and the API from the same HTTPS address. After deploying, open the public homepage and check `/api/health`. [Render deployment guide](https://render.com/docs/free)
 
-### Provider configuration
+### Provider APIs
 
-The sample trip preview runs without API keys. The Blueprint declares the following server-side variables for future integrations.
+Use Swagger's **Travel providers** section or the examples in [TravelPlanner.Api.http](backend/TravelPlanner.Api.http).
 
-| Variable | Planned use | Provider |
+| Endpoint | Input and result |
+| --- | --- |
+| `GET /api/travel/hotels` | Provide `destination=Goa`. Returns hotel-related web links and snippets, with no room rates or availability. |
+| `GET /api/travel/trains/{trainNumber}/fare` | Provide `source`, `destination`, `travelClass`, and `date`. Defaults to general quota `GN`. Returns the provider's fare in INR for a known train and class, with a link to confirm availability on IRCTC. |
+| `GET /api/travel/flights` | Provide `flightCode=AI101` or `origin=DEL&destination=GOI`. Returns current flight status and airport details. Airfares and future schedules are outside this endpoint. |
+| `POST /api/travel/itinerary` | Provide `destination`, `days` (1–14), and optional `interests`. Returns a suggested itinerary as text from Groq. |
+
+The sample trip preview still runs without keys. Each provider endpoint returns HTTP 503 if its key is missing. The four endpoints share a per-instance rate limit of 10 requests per minute. Provider quotas can impose lower limits.
+
+| Variable | Used for | Provider |
 | --- | --- | --- |
 | `GROQ_API_KEY` | AI itinerary suggestions | [Groq Console](https://console.groq.com/keys) |
 | `TAVILY_API_KEY` | Web search for attractions and travel research | [Tavily dashboard](https://app.tavily.com/) |
 | `AVIATIONSTACK_API_KEY` | Flight status and aviation data | [Aviationstack](https://aviationstack.com/) |
-| `RAILWAY_API_KEY` | Trial of train schedules and fare quotes | [Railway Engine setup](https://railengine.vercel.app/docs/getting-started) |
+| `RAILWAY_API_KEY` | Train fare quotes | [Railway Engine setup](https://railengine.vercel.app/docs/getting-started) |
 
-Enter actual values in Render when setting up the service or under **Environment → Add variable** afterward. For a demo-only deployment, the manual Docker setup works without provider variables. Keep values out of Angular, Git, and the Dockerfile. ASP.NET Core reads process environment variables automatically. For future local provider tests, set them in the PowerShell session that starts the backend. [Render environment variables](https://render.com/docs/configure-environment-variables)
+Enter actual values in Render when setting up the service or under **Environment → Add variable** afterward. For a demo-only deployment, the manual Docker setup works without provider variables. Keep values out of Angular, Git, and the Dockerfile. ASP.NET Core reads process environment variables automatically. For local provider tests, set them in the PowerShell session that starts the backend. Set optional `GROQ_MODEL` to override `openai/gpt-oss-20b`. [Render environment variables](https://render.com/docs/configure-environment-variables)
+
+## API request and response logs
+
+Every `/api` call produces two structured console entries, one when the request starts and one when it finishes. The entries share a `TraceId` and use a route template and `MethodName`, such as `HotelsReqResp`. The response entry includes HTTP status and elapsed time.
+
+When the SQL Server connection is configured, the `AddApiLogs` migration supplies an `ApiLogs` table with one row per call. `RequestJson` contains the method, route template, selected travel query parameters, and JSON body when captured. `ResponseJson` contains the status and JSON body when captured. Both columns are validated as JSON by SQL Server. Auth calls record metadata only. Other JSON bodies up to 16 KiB can be saved, with known credential and contact fields redacted. Requests must have a declared content length for body capture. Headers and raw query strings are omitted. A database logging failure is reported to the console and leaves the API response intact.
+
+For hosted SQL Server, set `ConnectionStrings__TravelPlanner` on the backend and apply migrations to that database before deployment.
+
+Every API call receives a server-generated GUID in the `X-Request-Id` response header. The same value is written to both console entries and to `dbo.ApiLogs.RequestId` when database logging is configured. The `AddApiLogRequestId` migration assigns unique GUIDs to existing log rows and keeps the numeric `Id` for sorting.
+
+When adding an API, define a `ReqResp` name in [ApiLogNames.cs](backend/Logging/ApiLogNames.cs) and assign it to the controller action's HTTP route attribute using `Name = ApiLogNames.YourEndpointReqResp`. Put its public contracts in `DTOs/` and its implementation in `Services/`.
 
 ## Next milestones
 
 1. Add a verified signup session, SQL Server user registration, sign-in sessions, and protected dashboard access.
 2. Connect the Angular trip form to the preview API and display budget results and validation errors.
 3. Choose hosted SQL Server for deployment and add tables for saving and reopening trips.
-4. Test provider coverage before adding live prices, train and bus options, and AI-assisted itineraries.
+4. Test provider coverage with credentials before connecting the travel endpoints to the dashboard. Identify sources for live hotel rates, airfares, and bus options.
 
 Update this README in the same commit whenever a change affects setup, API requests or responses, environment variables, deployment, or milestone status.

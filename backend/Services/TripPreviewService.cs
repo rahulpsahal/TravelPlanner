@@ -1,20 +1,22 @@
-namespace TravelPlanner.Api.Trips;
+using TravelPlanner.Api.DTOs;
 
-internal static class TripPreview
+namespace TravelPlanner.Api.Services;
+
+public sealed class TripPreviewService
 {
-    private static readonly Flight[] Flights =
+    private static readonly TripFlight[] Flights =
     [
         new("Sample Saver Flight", 7_200m),
         new("Sample Flexible Flight", 9_000m)
     ];
 
-    private static readonly Hotel[] Hotels =
+    private static readonly TripHotel[] Hotels =
     [
         new("Sample Budget Hotel", 2_400m),
         new("Sample Comfort Hotel", 3_500m)
     ];
 
-    public static IResult Create(TripPreviewRequest request)
+    public IResult Create(TripPreviewRequest request)
     {
         var errors = new Dictionary<string, string[]>();
         var todayInIndia = DateOnly.FromDateTime(DateTimeOffset.UtcNow.ToOffset(
@@ -57,42 +59,9 @@ internal static class TripPreview
 
         var withinBudget = options.Where(option => option.BudgetDifference >= 0).ToArray();
 
-        return Results.Ok(new
-        {
-            dataSource = "demo",
-            currency = "INR",
-            origin = "Delhi",
-            destination = "Goa",
-            request.DepartureDate,
-            request.ReturnDate,
-            request.Travelers,
-            request.Budget,
-            nights,
-            rooms,
-            hasWithinBudgetOptions = withinBudget.Length > 0,
-            options = withinBudget.Length > 0 ? withinBudget : [options[0]]
-        });
+        return Results.Ok(new TripPreviewResponse(
+            "demo", "INR", "Delhi", "Goa", request.DepartureDate!.Value, request.ReturnDate!.Value,
+            request.Travelers, request.Budget, nights, rooms, withinBudget.Length > 0,
+            withinBudget.Length > 0 ? withinBudget : [options[0]]));
     }
-
-    private sealed record Flight(string Name, decimal RoundTripPerTraveler)
-    {
-        public string ProviderSearchUrl => "https://www.google.com/travel/flights";
-    }
-
-    private sealed record Hotel(string Name, decimal NightlyRatePerRoom)
-    {
-        public string ProviderSearchUrl => "https://www.google.com/travel/hotels";
-    }
-
-    private sealed record TripOption(
-        Flight Flight, Hotel Hotel, decimal TransportTotal, decimal LodgingTotal,
-        decimal Total, decimal BudgetDifference);
 }
-
-internal sealed record TripPreviewRequest(
-    string? Origin,
-    string? Destination,
-    DateOnly? DepartureDate,
-    DateOnly? ReturnDate,
-    int Travelers,
-    decimal Budget);

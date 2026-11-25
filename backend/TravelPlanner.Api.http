@@ -1,6 +1,7 @@
 @baseUrl = http://localhost:5274
 @challengeId = 00000000-0000-0000-0000-000000000000
 @developmentCode = replace-with-code
+@railDate = {{$datetime "yyyy-MM-dd" 7 d}}
 
 GET {{baseUrl}}/api/health
 
@@ -34,4 +35,23 @@ Content-Type: application/json
 {
   "challengeId": "{{challengeId}}",
   "code": "{{developmentCode}}"
+}
+
+###
+GET {{baseUrl}}/api/travel/hotels?destination=Goa
+
+###
+GET {{baseUrl}}/api/travel/trains/12919/fare?source=DADN&destination=SVDK&travelClass=3A&date={{railDate}}
+
+###
+GET {{baseUrl}}/api/travel/flights?origin=DEL&destination=GOI
+
+###
+POST {{baseUrl}}/api/travel/itinerary
+Content-Type: application/json
+
+{
+  "destination": "Goa",
+  "days": 3,
+  "interests": "Beaches and local food"
 }

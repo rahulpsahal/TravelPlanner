@@ -22,6 +22,61 @@ namespace TravelPlanner.Api.Data.Migrations
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
 
+            modelBuilder.Entity("TravelPlanner.Api.Data.ApiLog", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<double>("ElapsedMs")
+                        .HasColumnType("float");
+
+                    b.Property<string>("MethodName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<Guid>("RequestId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier")
+                        .HasDefaultValueSql("NEWID()");
+
+                    b.Property<string>("RequestJson")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("ResponseJson")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<int>("StatusCode")
+                        .HasColumnType("int");
+
+                    b.Property<string>("TraceId")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("RequestId")
+                        .IsUnique();
+
+                    b.HasIndex("MethodName", "CreatedAt");
+
+                    b.ToTable("ApiLogs", t =>
+                        {
+                            t.HasCheckConstraint("CK_ApiLogs_RequestJson", "ISJSON([RequestJson]) = 1");
+
+                            t.HasCheckConstraint("CK_ApiLogs_ResponseJson", "ISJSON([ResponseJson]) = 1");
+                        });
+                });
+
             modelBuilder.Entity("TravelPlanner.Api.Data.OtpChallenge", b =>
                 {
                     b.Property<string>("PhoneNumber")
